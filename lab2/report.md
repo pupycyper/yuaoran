@@ -8,11 +8,11 @@
 
 ### 1.组织仓库截图
 
-![组织仓库截图](lab2/img/组织仓库截图.png)
+![组织仓库截图](img/组织仓库截图.png)
 
 ### 2.Clone 后仓库信息截图
 
-![Clone 后仓库信息](lab2/img/本人%20clone%20后的仓库信息.png)
+![Clone 后仓库信息](img/本人%20clone%20后的仓库信息.png)
 
 本次 Clone 地址：
 
@@ -20,7 +20,7 @@ https://github.com/softh-dev/pi-hunnu-2026.git
 
 ### 3.源码目录截图
 
-![源码目录截图](lab2/img/源码目录截图.png)
+![源码目录截图](img/源码目录截图.png)
 
 ## 二、模块分析
 
@@ -50,7 +50,7 @@ schema → telemetry → chord → tui → codemode → mcp → ai → durable �
 
 模块层级与依赖关系图：
 
-![模块层级与依赖关系图](lab2/img/模块层级与依赖关系图.png)
+![模块层级与依赖关系图](img/模块层级与依赖关系图.png)
 
  Mermaid 代码(完整图源)：
 
