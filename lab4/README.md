@@ -10,8 +10,7 @@
 
 ## 一、源码修改
 
-
-**1.：模型调用前打印日志。** 搜 `const response = await streamFunction(`，在它上方加了一行：
+**1. 模型调用前打印日志。** 搜 `const response = await streamFunction(`，在它上方（第 413 行）加了一行：
 
 ```ts
 console.error("[P4] Agent 即将请求模型"); // 新增
@@ -22,7 +21,7 @@ const response = await streamFunction(config.model, llmContext, {
 
 这行在 `streamAssistantResponse` 函数里，每次要把上下文交给模型调用函数之前都会走到这里。
 
-**2.工具结果加入上下文后打印日志。** 搜 `currentContext.messages.push(result);`，在它下方加了一行：
+**2. 工具结果加入上下文后打印日志。** 搜 `currentContext.messages.push(result);`，在它下方（第 285 行）加了一行：
 
 ```ts
 for (const result of toolResults) {
@@ -35,7 +34,6 @@ for (const result of toolResults) {
 ![S2 第285行新增日志](img/2.png)
 
 这段在 `runLoop` 函数里：模型回复里如果有 `toolCall`，就会先执行工具，把得到的结果一条条放进上下文。
-
 
 ---
 
@@ -55,7 +53,7 @@ echo $LASTEXITCODE
 
 构建最后一行是 `Built packages\coding-agent\dist\bundle (84 files, 9.4 MiB)`，`$LASTEXITCODE` 是 `0`。日志里还能看到 `@earendil-works/pi-agent-core@1.5.2 build` 执行了 `tsc -p tsconfig.build.json`，我改的 `agent-loop.ts` 就是这一步被重新编译的。构建过程中依然有一堆 `min-release-age-exclude` 的 npm 配置警告，和实践课3一样，不是错误。
 
-构建成功后，直接运行编译产物
+构建成功后，直接运行编译产物：
 
 ```powershell
 node .\packages\coding-agent\dist\cli.js
@@ -77,7 +75,7 @@ Get-Content .\p4-A.log -Encoding UTF8
 
 ![S4 启动命令与Pi界面](img/4.png)
 
-图里最上面一行就是启动命令，`node .\packages\coding-agent\dist\cli.js` Pi 成功打开，界面能正常提问和回复。
+图里最上面一行就是启动命令，`node .\packages\coding-agent\dist\cli.js` 后面的 `2> p4-A.log` 只是把日志存进文件。Pi 成功打开，界面能正常提问和回复。
 
 ---
 
@@ -93,9 +91,9 @@ P4-AGENT-2026
 
 ### 会话 A：直接问答
 
-- 输入：请直接用一句话解释什么是 Git 分支。
-- 是否调用工具：没有
-- `[P4]` 日志（按顺序）：
+- **输入：** 请直接用一句话解释什么是 Git 分支。
+- **是否调用工具：** 没有
+- **`[P4]` 日志（按顺序）：**
 
   ```
   [P4] Agent 即将请求模型
@@ -108,11 +106,11 @@ P4-AGENT-2026
 
 ### 会话 B：读取文件
 
-- 输入：请用 read 工具读取当前目录的 practice4.txt，并告诉我文件中的实验代号。
-- 是否调用工具：调用了 `read`，界面里能看到 `read C:/dev/pi-hunnu-2026/practice4.txt
-- 最终回复：实验代号是 `P4-AGENT-2026`
+- **输入：** 请用 read 工具读取当前目录的 practice4.txt，并告诉我文件中的实验代号。
+- **是否调用工具：** 调用了 `read`，界面里能看到 `read C:/dev/pi-hunnu-2026/practice4.txt`
+- **最终回复：** 实验代号是 `P4-AGENT-2026`
 
-我一共跑了两次会话 B
+我一共跑了两次会话 B。
 
 **第一次（日志干净）：** 当时我用 PowerShell 直接 `2> p4-B.log` 重定向，`type` 出来是乱码（PowerShell 5.1 重定向 stderr 时的编码问题，加上 `NativeCommandError` 的红字），但能数出来是 3 行，对应顺序是：
 
@@ -121,7 +119,6 @@ P4-AGENT-2026
 [P4] 工具结果已加入上下文
 [P4] Agent 即将请求模型
 ```
-
 
 **第二次（用 cmd 方式重定向，日志不乱码）：**
 
@@ -144,10 +141,9 @@ Get-Content .\p4-B.log -Encoding UTF8
 [P4] Agent 即将请求模型
 ```
 
-比第一次多了两条"即将请求模型"。看终端里，`read` 之前连续出现了两次红色的 `Error: 429 ... baidu/ernie-5.5-flash-preview:free is temporarily rate-limited upstream`，是免费模型被上游临时限流了。前两次请求被 429 拒绝后又重试了，每次重试都会再走到加日志的那一行，直到第三次请求成功。
+比第一次多了两条"即将请求模型"。看终端里，`read` 之前连续出现了两次红色的 `Error: 429 ... baidu/ernie-5.5-flash-preview:free is temporarily rate-limited upstream`，是免费模型被上游临时限流了。我推测，前两次请求被 429 拒绝后又重试了，每次重试都会再走到加日志的那一行，直到第三次请求成功（这是我根据 429 次数和多出来的日志条数推出来的，没有去核对重试的源码）。
 
-
-
+**模型调用轮数：** 不管有没有限流，成功得到回复的模型调用都是 **2 轮**：第一轮模型发出 `read` 调用，第二轮带着文件内容再请求，才得到最终回答。
 
 ### 谁实际读了文件？
 
@@ -156,8 +152,6 @@ Get-Content .\p4-B.log -Encoding UTF8
 ### 下一轮模型请求多带了什么？
 
 多带了刚才那条工具结果，也就是 `practice4.txt` 的内容。第二次请求的上下文里除了原来的对话，还加上了这条工具结果。模型拿到文件内容之后，才能回答出代号 `P4-AGENT-2026`。如果没有这一步，模型是不可能知道我自己写的代号的。这也解释了为什么"工具结果已加入上下文"之后紧跟着一条"即将请求模型"。
-
-用量上也能看到差别：会话 A 一次请求输入 6,362 tokens，会话 B 总共 13,045 或 12,882 tokens，大约是两次请求的量，而且 B 里出现了 12,288 的缓存，应该是第二次请求里和第一次相同的前面部分命中了缓存。这个缓存的解释是我的推测。
 
 ### 运行流程简图
 
