@@ -6,7 +6,6 @@
 - 小组代码仓库：https://github.com/softh-dev/pi-hunnu-2026
 - 使用模型：OpenRouter 免费模型 `baidu/ernie-5.5-flash-preview:free`
 
-
 ---
 
 ## 一、A：单轮交互与工具调用
@@ -30,7 +29,8 @@
 
 - 模型先发出一次 `read` 工具调用，界面上显示 `read handoff.txt:1-2000`，工具只执行了 1 次。
 - 最后的回复是：待办：补充 README 的启动说明；启动命令：`npm run demo -- --profile P4-AGENT-2026`，和文件内容一致。
-- 这次免费模型被限流了，终端里出现了3条报错，但最后还是成功拿到了回复。
+- 这次免费模型被限流了，终端里出现了 3 条报错，但最后还是成功拿到了回复。
+- 界面里有两条用量统计（`in 230 / out 65` 和 `in 336 / out 36`），对应两次成功的模型调用，中间是一次 `read` 工具调用。
 
 所以这一次输入，是**一轮交互里发生了 2 次成功的模型调用 + 1 次工具执行**。
 
@@ -38,7 +38,7 @@
 
 ## 二、图1：单轮工具调用的代码级时序图
 
-下面是按"读取 `handoff.txt` "画的。五条生命线：用户、交互与会话层、Agent 执行层、模型请求层、`read` 工具。
+下面是按"读取 `handoff.txt`"画的。五条生命线：用户、交互与会话层、Agent 执行层、模型请求层、`read` 工具。
 
 ```mermaid
 sequenceDiagram
@@ -87,7 +87,7 @@ sequenceDiagram
 
 **启动循环。** `AgentSession.prompt()` 先处理扩展命令、模板、鉴权这些前置检查，通过 `_startRun()` 调用 `this.agent.prompt(messages)`（agent-session.ts:1982）。到 `packages/agent` 里，`Agent.prompt()` → `runPromptMessages()` → `runAgentLoop()` → `runLoop()`，这几步都是同一层里跨文件调用（`agent.ts` 到 `agent-loop.ts`）。
 
-**模型与远端的边界。** `streamAssistantResponse()` 里的 `streamFunction(...)`（412）调用的是 `coding-agent` 在 `sdk.ts:412` 注入的 `streamFn`，它转给 `modelRuntime.streamSimple()`，再由 provider 选择适配器。我用的是 OpenRouter，它的 provider 声明了 `openai-completions` 适配器（openrouter.ts:62-82），最后在 `ai/src/api/openai-completions.ts:385` 用 `client.chat.completions.create(...)` 发出 HTTP 请求，远端模型的回复以事件流返回。
+**模型与远端的边界。** `streamAssistantResponse()` 里的 `streamFunction(...)`（412）调用的是 `coding-agent` 在 `sdk.ts:412` 注入的 `streamFn`，它转给 `modelRuntime.streamSimple()`，再由 provider 选择适配器。我用的是 OpenRouter，它的 provider 声明了 `openai-completions` 适配器（openrouter.ts:62-82），一般情况下最后会在 `ai/src/api/openai-completions.ts:385` 用 `client.chat.completions.create(...)` 发出 HTTP 请求，远端模型的回复以事件流返回。（OpenRouter 的 provider 还声明了 `anthropic-messages`，我没有逐个核对本次所用模型具体是哪一种 api，按非 Anthropic 模型一般走 `openai-completions` 来画。）
 
 **文件系统调用走的是流式读取，不是缓冲区读取。** 我核对了 `read.ts`：文本文件的读取（301-308）是
 
@@ -127,23 +127,23 @@ ops.createReadStream && isStreamableRange(offset, limit)
 ![新建会话后的回答](img/2-2.png)
 
 - **没有调用工具**。
-- **回答是"缺少命令，无法起草"**
-
+- **回答是"缺少命令，无法起草"**。
 
 ### 3.3 对照
 
-| | 恢复原会话（`-c`） | 新建会话（`/new`） |
-|---|---|---|
-| 提问 | 完全相同 | 完全相同 |
-| 模型 | `baidu/ernie-5.5-flash-preview:free` | 同左 |
-| 是否调用工具 | 否 | 否 |
-| 是否答出完整启动命令 | **是** | **否**，说缺少命令 |
-| 输入的 token | 7,403（无缓存） | 249 + 缓存 6,144 = 6,393 |
-
+|            | 恢复原会话（`-c`）                          | 新建会话（`/new`）           |
+| ---------- | ------------------------------------ | ---------------------- |
+| 提问         | 完全相同                                 | 完全相同                   |
+| 模型         | `baidu/ernie-5.5-flash-preview:free` | 同左                     |
+| 是否调用工具     | 否                                    | 否                      |
+| 是否答出完整启动命令 | **是**                                | **否**，说缺少命令            |
+| 输入的 token  | 7,403（无缓存）                           | 249 + 缓存 6,144 = 6,393 |
 
 证据的结论是：**恢复后的回答里有 A 阶段才读到的命令，而且没有重新读文件**，这支持"它用了恢复出来的会话历史"；新会话里同样的问题答不出命令，反过来说明命令不在提问里，只存在于历史里。
 
+说明：B 阶段我一开始误把 `/exit` 和 `-c` 命令输进了 Pi 的输入框，它们被当成消息发给了模型，我还在没退出的同一个会话里问过一次同样的 README 问题。所以被恢复的历史里除了 A 阶段读到的内容，还有这些多出来的消息，恢复后的回答不能完全只归因于 `handoff.txt` 的内容。
 
+---
 
 ## 四、图2：恢复旧会话和新建会话的对照图
 
@@ -156,7 +156,7 @@ flowchart TB
 
     subgraph LEFT["左：恢复旧会话"]
         direction TB
-        L1["退出 Pi，在同一个目录执行<br/>node .\packages\coding-agent\dist\cli.js -c"]
+        L1["退出 Pi，在同一个目录执行<br/>node ./packages/coding-agent/dist/cli.js -c"]
         L2["main.ts:479-480 parsed.continue<br/>SessionManager.continueRecent(cwd, sessionDir)<br/>session-manager.ts:1811 找最近的会话文件 findMostRecentSession 750"]
         L3["Pi 打开 A 阶段保存的会话文件<br/>_setSessionFile 1037 到 loadEntriesFromFile 628 读入全部条目"]
         L4["Pi 从文件里恢复历史消息<br/>buildSessionProjection 544 得到 messages<br/>其中有 read 的 toolCall 和 toolResult<br/>sdk.ts:409 messages: existingSession.messages"]
@@ -192,15 +192,15 @@ flowchart TB
 
 ## 五、适合修改的位置
 
-| 想改什么 | 适合改哪里 |
-|---|---|
-| 用户输入的预处理，比如加快捷命令 | `interactive-mode.ts:3325` 的 `onSubmit`，或者 `agent-session.ts:2175` 的 `AgentSession.prompt()` |
-| Agent 每一轮做什么、工具循环怎么控制 | `agent-loop.ts:172` 的 `runLoop()` |
-| 模型请求的重试、超时、请求头 | `sdk.ts:412` 注入的 `streamFn` |
-| 往哪个 provider 发请求 | `model-runtime.ts:744` 的 `streamSimple()`，以及 `ai/src/providers/` 下对应 provider |
-| 新增或修改工具 | `coding-agent/src/core/tools/` 下的文件，比如 `read.ts` |
-| 回复和工具方框怎么显示 | `interactive-mode.ts` 里 `handleEvent` 的 `message_update`、`message_end` 分支 |
-| 会话怎么保存和恢复 | `session-manager.ts` 里的 `loadEntriesFromFile`、`buildSessionProjection`，以及 `agent-session-runtime.ts` 的 `newSession` |
+| 想改什么                  | 适合改哪里                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| 用户输入的预处理，比如加快捷命令      | `interactive-mode.ts:3325` 的 `onSubmit`，或者 `agent-session.ts:2175` 的 `AgentSession.prompt()`                        |
+| Agent 每一轮做什么、工具循环怎么控制 | `agent-loop.ts:172` 的 `runLoop()`                                                                                   |
+| 模型请求的重试、超时、请求头        | `sdk.ts:412` 注入的 `streamFn`                                                                                         |
+| 往哪个 provider 发请求      | `model-runtime.ts:744` 的 `streamSimple()`，以及 `ai/src/providers/` 下对应 provider                                       |
+| 新增或修改工具               | `coding-agent/src/core/tools/` 下的文件，比如 `read.ts`                                                                    |
+| 回复和工具方框怎么显示           | `interactive-mode.ts` 里 `handleEvent` 的 `message_update`、`message_end` 分支                                           |
+| 会话怎么保存和恢复             | `session-manager.ts` 里的 `loadEntriesFromFile`、`buildSessionProjection`，以及 `agent-session-runtime.ts` 的 `newSession` |
 
 ---
 
